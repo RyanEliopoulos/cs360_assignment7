@@ -1,3 +1,12 @@
+/*
+ * Ryan paulos
+ * CS 360, Assignment 7
+ * 3/30/2019
+ *
+ * This program implements and solves the dining philosophers problem utilizing threads and mutexes.
+ *
+ *
+ */
 
 
 
@@ -97,7 +106,7 @@ void dine(struct philosopher *phil) {
     while (time_eating < EAT_TIME) {
 
         // get the thinking out of the way
-        think_time  = randomGaussian(4, 8);     
+        think_time  = randomGaussian(11, 7);     
         think_time = (think_time < 0) ? 0: think_time;
         printf("philosopher %d is thinking for %d seconds (%d)\n", phil->id, think_time, time_thinking);
         time_thinking += think_time;
@@ -109,7 +118,7 @@ void dine(struct philosopher *phil) {
         while (getChopsticks(phil)) sleep(2); // 
 
         // have both chopsticks. now 'eat'  
-        eat_time = randomGaussian(8, 8);
+        eat_time = randomGaussian(11, 7);
         eat_time = (eat_time < 0) ? 0: eat_time;
         printf("Philosopher %d is eating for %d seconds (%d)\n", phil->id, eat_time, time_eating);
         time_eating += eat_time;
