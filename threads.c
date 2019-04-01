@@ -1,3 +1,7 @@
+
+
+
+#include<string.h>
 #include<errno.h>
 #include<error.h>
 #include<unistd.h>
@@ -7,13 +11,17 @@
 #include<pthread.h>
 
 
-#define EAT_TIME  100
+#define EAT_TIME  100  // time spent eating before leaving the table
+
+/* error codes */
+#define THRD_CREAT 1 // error creating thread
+#define MTX_UNLK 2   // error unlocking a mutex
 
 struct philosopher {
     int id;             // philosopher number 0-4
     int left_chopstick; // index values for sems
     int right_chopstick;
-    pthread_mutex_t *sems; // array of mutexes
+    pthread_mutex_t *sems; // array of chopstick mutexes
 } philosopher;    
 
 
@@ -49,9 +57,7 @@ void main() {
 
     // and feast!
     beginBanquet(sems, phils);    
-
 }
-
 
 void beginBanquet(pthread_mutex_t *sems, struct philosopher *phils) {
 
@@ -59,16 +65,22 @@ void beginBanquet(pthread_mutex_t *sems, struct philosopher *phils) {
 
     // Spin up threads    
     for (int i = 0; i < 5; i++) {
-        pthread_create(threads+i, NULL, (void *) dine, (void *) (phils+i));
+        if ( pthread_create(threads+i, NULL, (void *) dine, (void *) (phils+i)) != 0 ) {
+            fprintf(stderr, "Error spinning up thread %d\n %s\n", i, strerror(errno));
+            exit(THRD_CREAT);
+        }
     }
-
-
     
-
-
-    // wait for all the threads to print before program terminates
+    // join philosopher threads before returning to main and terminating
+    int ret;
     for (int i = 0; i < 5; i++) {
-        pthread_join(threads[i], NULL);
+        ret = pthread_join(threads[i], NULL);
+        if (ret != 0) {
+            printf("thread %i returned with status: %s\n", i, strerror(ret));
+        }
+        else {
+            printf("thread %d returned successfully\n", i);
+        }
     }
 }
 
@@ -112,26 +124,44 @@ void dine(struct philosopher *phil) {
 void returnChopsticks(struct philosopher *phil) {
 
     // return left chopstick
-    pthread_mutex_unlock(&phil->sems[phil->left_chopstick]);
+    int ret;
+    if ( (ret = pthread_mutex_unlock(&phil->sems[phil->left_chopstick]) != 0)) {
+        fprintf(stderr, "thread %d encountered error unlocking left chopstick mutex\n %s\n", phil->id, strerror(ret));
+        exit(MTX_UNLK);
+    }
     // return right chopstick
-    pthread_mutex_unlock(&phil->sems[phil->right_chopstick]);
-
+    if ( (ret = pthread_mutex_unlock(&phil->sems[phil->right_chopstick]) != 0)) {
+        fprintf(stderr, "thread %d encountered error unlocking right chopstick mutex\n %s\n", phil->id, strerror(ret));
+        exit(MTX_UNLK);
+    }
 }
 
 int getChopsticks(struct philosopher *phil) {
 
     // try for left chopstick
-    
-    if (pthread_mutex_trylock(&phil->sems[phil->left_chopstick]) == EBUSY) {
+    int ret;
+    if ( (ret = pthread_mutex_trylock(&phil->sems[phil->left_chopstick])) == EBUSY) {  // check for a locked mutex
         return -1;
+    } 
+    else if (ret != 0) {  // check if terminal error occured attemptin to get mutex
+        fprintf(stderr, "thread %d encountered error trylock-ing mutex %d\n %s\n", phil->id, phil->left_chopstick, strerror(ret));
+        fprintf(stderr, "terminating\n");
+        exit(MTX_UNLK); 
     }
     
     // have left chopstick. Try for the right
-    if (pthread_mutex_trylock(&phil->sems[phil->right_chopstick]) == EBUSY) {
-        pthread_mutex_unlock(&phil->sems[phil->left_chopstick]);
+    if ( (ret = pthread_mutex_trylock(&phil->sems[phil->right_chopstick])) == EBUSY) { // check for a locked mutex
+        ret = pthread_mutex_unlock(&phil->sems[phil->left_chopstick]);  // right chopstick was locked, so return the left one
+        if (ret != 0) {  
+            fprintf(stderr, "thread %d encountered error unlocking mutex %d\n %s\n", phil->id, phil->left_chopstick, strerror(ret));
+            exit(MTX_UNLK);
+        } 
         return -1;         
     }
-
+    else if (ret != 0) {  // terminal error occcured attempting to et the right chopstick mutex
+        fprintf(stderr, "thread %d encountered error trylock-ing mutex %d\n %s\n", phil->id, phil->left_chopstick, strerror(ret));
+        exit(MTX_UNLK);
+    }
     // have both chopsticks
     return 0;
 }
@@ -144,10 +174,9 @@ void setTable (pthread_mutex_t *sems, struct philosopher *phils) {
         phils[i].id = i;
         phils[i].left_chopstick = i;
         phils[i].right_chopstick = (i + 1) % 5;
-        phils[i].sems = sems;
+        phils[i].sems = sems;  
     }
 }
-
 
 // provides randomness to thinking/drinking
 int randomGaussian(int mean, int stddev) {
